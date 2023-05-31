@@ -149,7 +149,7 @@ pool_startup() ->
     ?assertEqual(10, queue:len(pool_call(Pid, get_avail_workers))),
     poolboy:checkout(Pid),
     ?assertEqual(9, queue:len(pool_call(Pid, get_avail_workers))),
-    Worker = poolboy:checkout(Pid),
+    {ok, Worker} = poolboy:checkout(Pid),
     ?assertEqual(8, queue:len(pool_call(Pid, get_avail_workers))),
     checkin_worker(Pid, Worker),
     ?assertEqual(9, queue:len(pool_call(Pid, get_avail_workers))),
@@ -161,7 +161,7 @@ pool_overflow() ->
     Workers = [poolboy:checkout(Pid) || _ <- lists:seq(0, 6)],
     ?assertEqual(0, queue:len(pool_call(Pid, get_avail_workers))),
     ?assertEqual(7, length(pool_call(Pid, get_all_workers))),
-    [A, B, C, D, E, F, G] = Workers,
+    [{ok, A}, {ok, B}, {ok, C}, {ok, D}, {ok, E}, {ok, F}, {ok, G}] = Workers,
     checkin_worker(Pid, A),
     checkin_worker(Pid, B),
     ?assertEqual(0, queue:len(pool_call(Pid, get_avail_workers))),
@@ -193,10 +193,10 @@ pool_empty() ->
     Workers = [poolboy:checkout(Pid) || _ <- lists:seq(0, 6)],
     ?assertEqual(0, queue:len(pool_call(Pid, get_avail_workers))),
     ?assertEqual(7, length(pool_call(Pid, get_all_workers))),
-    [A, B, C, D, E, F, G] = Workers,
+    [{ok, A}, {ok, B}, {ok, C}, {ok, D}, {ok, E}, {ok, F}, {ok, G}] = Workers,
     Self = self(),
     spawn(fun() ->
-        Worker = poolboy:checkout(Pid),
+        {ok, Worker} = poolboy:checkout(Pid),
         Self ! got_worker,
         checkin_worker(Pid, Worker)
     end),
@@ -234,10 +234,10 @@ pool_empty_no_overflow() ->
     Workers = [poolboy:checkout(Pid) || _ <- lists:seq(0, 4)],
     ?assertEqual(0, queue:len(pool_call(Pid, get_avail_workers))),
     ?assertEqual(5, length(pool_call(Pid, get_all_workers))),
-    [A, B, C, D, E] = Workers,
+    [{ok, A}, {ok, B}, {ok, C}, {ok, D}, {ok, E}] = Workers,
     Self = self(),
     spawn(fun() ->
-        Worker = poolboy:checkout(Pid),
+        {ok, Worker} = poolboy:checkout(Pid),
         Self ! got_worker,
         checkin_worker(Pid, Worker)
     end),
@@ -268,10 +268,10 @@ worker_death() ->
     %% Check that dead workers are only restarted when the pool is not full
     %% and the overflow count is 0. Meaning, don't restart overflow workers.
     {ok, Pid} = new_pool(5, 2),
-    Worker = poolboy:checkout(Pid),
+    {ok, Worker} = poolboy:checkout(Pid),
     kill_worker(Worker),
     ?assertEqual(5, queue:len(pool_call(Pid, get_avail_workers))),
-    [A, B, C | _Workers] = [poolboy:checkout(Pid) || _ <- lists:seq(0, 6)],
+    [{ok, A}, {ok, B}, {ok, C} | _Workers] = [poolboy:checkout(Pid) || _ <- lists:seq(0, 6)],
     ?assertEqual(0, queue:len(pool_call(Pid, get_avail_workers))),
     ?assertEqual(7, length(pool_call(Pid, get_all_workers))),
     kill_worker(A),
@@ -288,10 +288,10 @@ worker_death_while_full() ->
     %% queued checkout, a new worker is started and the checkout serviced.
     %% If there are no queued checkouts, a new worker is not started.
     {ok, Pid} = new_pool(5, 2),
-    Worker = poolboy:checkout(Pid),
+    {ok, Worker} = poolboy:checkout(Pid),
     kill_worker(Worker),
     ?assertEqual(5, queue:len(pool_call(Pid, get_avail_workers))),
-    [A, B | _Workers] = [poolboy:checkout(Pid) || _ <- lists:seq(0, 6)],
+    [{ok, A}, {ok, B} | _Workers] = [poolboy:checkout(Pid) || _ <- lists:seq(0, 6)],
     ?assertEqual(0, queue:len(pool_call(Pid, get_avail_workers))),
     ?assertEqual(7, length(pool_call(Pid, get_all_workers))),
     Self = self(),
@@ -324,10 +324,10 @@ worker_death_while_full_no_overflow() ->
     %% overflow, a new worker is started unconditionally and any queued
     %% checkouts are serviced.
     {ok, Pid} = new_pool(5, 0),
-    Worker = poolboy:checkout(Pid),
+    {ok, Worker} = poolboy:checkout(Pid),
     kill_worker(Worker),
     ?assertEqual(5, queue:len(pool_call(Pid, get_avail_workers))),
-    [A, B, C | _Workers] = [poolboy:checkout(Pid) || _ <- lists:seq(0, 4)],
+    [{ok, A}, {ok, B}, {ok, C} | _Workers] = [poolboy:checkout(Pid) || _ <- lists:seq(0, 4)],
     ?assertEqual(0, queue:len(pool_call(Pid, get_avail_workers))),
     ?assertEqual(5, length(pool_call(Pid, get_all_workers))),
     Self = self(),
@@ -361,14 +361,14 @@ pool_full_nonblocking_no_overflow() ->
     %% Check that when the pool is full, checkouts return 'full' when the
     %% option to use non-blocking checkouts is used.
     {ok, Pid} = new_pool(5, 0),
-    Workers = [poolboy:checkout(Pid) || _ <- lists:seq(0, 4)],
+    {ok, Workers} = [poolboy:checkout(Pid) || _ <- lists:seq(0, 4)],
     ?assertEqual(0, queue:len(pool_call(Pid, get_avail_workers))),
     ?assertEqual(5, length(pool_call(Pid, get_all_workers))),
     ?assertEqual(full, poolboy:checkout(Pid, false)),
     ?assertEqual(full, poolboy:checkout(Pid, false)),
     A = hd(Workers),
     checkin_worker(Pid, A),
-    ?assertEqual(A, poolboy:checkout(Pid)),
+    ?assertEqual({ok, A}, poolboy:checkout(Pid)),
     ?assertEqual(5, length(pool_call(Pid, get_all_monitors))),
     ok = pool_call(Pid, stop).
 pool_full_nonblocking() ->
@@ -379,9 +379,9 @@ pool_full_nonblocking() ->
     ?assertEqual(0, queue:len(pool_call(Pid, get_avail_workers))),
     ?assertEqual(10, length(pool_call(Pid, get_all_workers))),
     ?assertEqual(full, poolboy:checkout(Pid, false)),
-    A = hd(Workers),
+    {ok, A} = hd(Workers),
     checkin_worker(Pid, A),
-    NewWorker = poolboy:checkout(Pid, false),
+    {ok, NewWorker} = poolboy:checkout(Pid, false),
     %% Overflow workers get shutdown
     ?assertEqual(false, is_process_alive(A)),
     ?assert(is_pid(NewWorker)),
@@ -448,7 +448,7 @@ demonitors_previously_waiting_processes() ->
     {ok, Pool} = new_pool(1, 0),
     Self = self(),
     Pid = spawn(fun() ->
-        W = poolboy:checkout(Pool),
+        {ok, W} = poolboy:checkout(Pool),
         Self ! ok,
         timer:sleep(500),
         poolboy:checkin(Pool, W),
@@ -459,7 +459,7 @@ demonitors_previously_waiting_processes() ->
     receive
         ok -> ok
     end,
-    Worker = poolboy:checkout(Pool),
+    {ok, Worker} = poolboy:checkout(Pool),
     ?assertEqual(1, length(get_monitors(Pool))),
     poolboy:checkin(Pool, Worker),
     timer:sleep(500),
@@ -488,29 +488,29 @@ demonitors_when_checkout_cancelled() ->
 default_strategy_lifo() ->
     %% Default strategy is LIFO
     {ok, Pid} = new_pool(2, 0),
-    Worker1 = poolboy:checkout(Pid),
+    {ok, Worker1} = poolboy:checkout(Pid),
     ok = poolboy:checkin(Pid, Worker1),
-    Worker1 = poolboy:checkout(Pid),
+    {ok, Worker1} = poolboy:checkout(Pid),
     poolboy:stop(Pid).
 lifo_strategy() ->
     {ok, Pid} = new_pool(2, 0, lifo),
-    Worker1 = poolboy:checkout(Pid),
+    {ok, Worker1} = poolboy:checkout(Pid),
     ok = poolboy:checkin(Pid, Worker1),
-    Worker1 = poolboy:checkout(Pid),
+    {ok, Worker1} = poolboy:checkout(Pid),
     poolboy:stop(Pid).
 fifo_strategy() ->
     {ok, Pid} = new_pool(2, 0, fifo),
-    Worker1 = poolboy:checkout(Pid),
+    {ok, Worker1} = poolboy:checkout(Pid),
     ok = poolboy:checkin(Pid, Worker1),
-    Worker2 = poolboy:checkout(Pid),
+    {ok, Worker2} = poolboy:checkout(Pid),
     ?assert(Worker1 =/= Worker2),
-    Worker1 = poolboy:checkout(Pid),
+    {ok, Worker1} = poolboy:checkout(Pid),
     poolboy:stop(Pid).
 reuses_waiting_monitor_on_worker_exit() ->
     {ok, Pool} = new_pool(1, 0),
     Self = self(),
     Pid = spawn(fun() ->
-        Worker = poolboy:checkout(Pool),
+        {ok, Worker} = poolboy:checkout(Pool),
         Self ! {worker, Worker},
         poolboy:checkout(Pool),
         receive

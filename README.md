@@ -10,7 +10,7 @@ focus on **simplicity**, **performance**, and **rock-solid** disaster recovery.
 ## Usage
 
 ```erl-sh
-1> Worker = poolboy:checkout(PoolName).
+1> {ok, Worker} = poolboy:checkout(PoolName).
 <0.9001.0>
 2> gen_server:call(Worker, Request).
 ok

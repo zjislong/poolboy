@@ -64,22 +64,19 @@
     strategy = lifo :: lifo | fifo
 }).
 
--spec checkout(Pool :: pool()) -> pid().
+-spec checkout(Pool :: pool()) -> {ok, pid()} | full | {error, Reason :: any()}.
 checkout(Pool) ->
     checkout(Pool, true).
 
--spec checkout(Pool :: pool(), Block :: boolean()) -> pid() | full.
+-spec checkout(Pool :: pool(), Block :: boolean()) -> {ok, pid()} | full | {error, Reason :: any()}.
 checkout(Pool, Block) ->
     checkout(Pool, Block, ?TIMEOUT).
 
--spec checkout(Pool :: pool(), Block :: boolean(), Timeout :: timeout()) ->
-    pid() | full.
+-spec checkout(Pool :: pool(), Block :: boolean(), Timeout :: timeout()) -> {ok, pid()} | full | {error, Reason :: any()}.
 checkout(Pool, Block, Timeout) ->
     CRef = make_ref(),
-    try gen_server:call(Pool, {checkout, CRef, Block}, Timeout) of
-        {ok, Pid} -> Pid;
-        full -> full;
-        {error, Reason} -> exit(Reason)
+    try
+        gen_server:call(Pool, {checkout, CRef, Block}, Timeout)
     catch
         ?EXCEPTION(Class, Reason, Stacktrace) ->
             gen_server:cast(Pool, {cancel_waiting, CRef}),
@@ -90,45 +87,35 @@ checkout(Pool, Block, Timeout) ->
 checkin(Pool, Worker) when is_pid(Worker) ->
     gen_server:cast(Pool, {checkin, Worker}).
 
--spec transaction(Pool :: pool(), Fun :: fun((Worker :: pid()) -> any())) ->
-    any().
+-spec transaction(Pool :: pool(), Fun :: fun((Worker :: pid()) -> any())) -> any().
 transaction(Pool, Fun) ->
     transaction(Pool, Fun, ?TIMEOUT).
 
--spec transaction(
-    Pool :: pool(),
-    Fun :: fun((Worker :: pid()) -> any()),
-    Timeout :: timeout()
-) -> any().
+-spec transaction(Pool :: pool(), Fun :: fun((Worker :: pid()) -> any()), Timeout :: timeout()) -> any().
 transaction(Pool, Fun, Timeout) ->
-    Worker = poolboy:checkout(Pool, true, Timeout),
-    try
-        Fun(Worker)
-    after
-        ok = poolboy:checkin(Pool, Worker)
+    case checkout(Pool, true, Timeout) of
+        {ok, Worker} ->
+            try
+                Fun(Worker)
+            after
+                ok = checkin(Pool, Worker)
+            end;
+        Fail ->
+            Fail
     end.
 
--spec child_spec(PoolId :: term(), PoolArgs :: proplists:proplist()) ->
-    supervisor:child_spec().
+-spec child_spec(PoolId :: term(), PoolArgs :: proplists:proplist()) -> supervisor:child_spec().
 child_spec(PoolId, PoolArgs) ->
     child_spec(PoolId, PoolArgs, []).
 
--spec child_spec(
-    PoolId :: term(),
-    PoolArgs :: proplists:proplist(),
-    WorkerArgs :: proplists:proplist()
-) ->
+-spec child_spec(PoolId :: term(), PoolArgs :: proplists:proplist(), WorkerArgs :: proplists:proplist()) ->
     supervisor:child_spec().
 child_spec(PoolId, PoolArgs, WorkerArgs) ->
     child_spec(PoolId, PoolArgs, WorkerArgs, tuple).
 
 -spec child_spec(
-    PoolId :: term(),
-    PoolArgs :: proplists:proplist(),
-    WorkerArgs :: proplists:proplist(),
-    ChildSpecFormat :: 'tuple' | 'map'
-) ->
-    supervisor:child_spec().
+    PoolId :: term(), PoolArgs :: proplists:proplist(), WorkerArgs :: proplists:proplist(), ChildSpecFormat :: 'tuple' | 'map'
+) -> supervisor:child_spec().
 child_spec(PoolId, PoolArgs, WorkerArgs, tuple) ->
     {PoolId, {poolboy, start_link, [PoolArgs, WorkerArgs]}, permanent, 5000, worker, [poolboy]};
 child_spec(PoolId, PoolArgs, WorkerArgs, map) ->
@@ -141,30 +128,20 @@ child_spec(PoolId, PoolArgs, WorkerArgs, map) ->
         modules => [poolboy]
     }.
 
--spec start(PoolArgs :: proplists:proplist()) ->
-    start_ret().
+-spec start(PoolArgs :: proplists:proplist()) -> start_ret().
 start(PoolArgs) ->
     start(PoolArgs, PoolArgs).
 
--spec start(
-    PoolArgs :: proplists:proplist(),
-    WorkerArgs :: proplists:proplist()
-) ->
-    start_ret().
+-spec start(PoolArgs :: proplists:proplist(), WorkerArgs :: proplists:proplist()) -> start_ret().
 start(PoolArgs, WorkerArgs) ->
     start_pool(start, PoolArgs, WorkerArgs).
 
--spec start_link(PoolArgs :: proplists:proplist()) ->
-    start_ret().
+-spec start_link(PoolArgs :: proplists:proplist()) -> start_ret().
 start_link(PoolArgs) ->
     %% for backwards compatability, pass the pool args as the worker args as well
     start_link(PoolArgs, PoolArgs).
 
--spec start_link(
-    PoolArgs :: proplists:proplist(),
-    WorkerArgs :: proplists:proplist()
-) ->
-    start_ret().
+-spec start_link(PoolArgs :: proplists:proplist(), WorkerArgs :: proplists:proplist()) -> start_ret().
 start_link(PoolArgs, WorkerArgs) ->
     start_pool(start_link, PoolArgs, WorkerArgs).
 
