@@ -263,7 +263,7 @@ handle_call(get_all_monitors, _From, State) ->
     {reply, Monitors, State};
 handle_call({update_size, Size}, _From, State) ->
     #state{workers = Workers} = State,
-    {reply, ok, State#state{size = Size, overflow = length(Workers) - Size}};
+    {reply, ok, State#state{size = Size, overflow = queue:len(Workers) - Size}};
 handle_call(stop, _From, State) ->
     {stop, normal, ok, State};
 handle_call(_Msg, _From, State) ->
