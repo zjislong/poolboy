@@ -13,7 +13,8 @@
     start/2,
     start_link/1, start_link/2,
     stop/1,
-    status/1
+    status/1,
+    update_size/2
 ]).
 -export([
     init/1,
@@ -153,6 +154,9 @@ stop(Pool) ->
 status(Pool) ->
     gen_server:call(Pool, status).
 
+update_size(Pool, Size) ->
+    gen_server:call(Pool, {update_size, Size}).
+
 init({PoolArgs, WorkerArgs}) ->
     process_flag(trap_exit, true),
     Waiting = queue:new(),
@@ -257,6 +261,9 @@ handle_call(get_all_monitors, _From, State) ->
         [{{'$1', '_', '$2'}, [], [{{'$1', '$2'}}]}]
     ),
     {reply, Monitors, State};
+handle_call({update_size, Size}, _From, State) ->
+    #state{workers = Workers} = State,
+    {reply, ok, State#state{size = Size, overflow = length(Workers) - Size}};
 handle_call(stop, _From, State) ->
     {stop, normal, ok, State};
 handle_call(_Msg, _From, State) ->
